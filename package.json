@@ -1,0 +1,24 @@
+{
+  "name": "pharos-dapp-support-agent",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Autonomous EVM transaction failure diagnostic agent, revert decoder, and developer remediation engine for Pharos Pacific Mainnet.",
+  "scripts": {
+    "test": "node test/index.test.mjs && node test/api.test.mjs",
+    "test:live": "RUN_LIVE_TESTS=1 node test/live.test.mjs",
+    "dev": "npx wrangler pages dev public",
+    "deploy": "npx wrangler pages deploy public --project-name pharos-dapp-support-agent"
+  },
+  "keywords": [
+    "pharos",
+    "agent-arena",
+    "support-agent",
+    "revert-decoder",
+    "evm",
+    "solidity",
+    "panic-code",
+    "custom-errors"
+  ],
+  "author": "Pharos Community Developer",
+  "license": "MIT"
+}

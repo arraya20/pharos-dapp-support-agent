@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pharos / dApp Support Agent</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app-container">
+    <header class="app-header">
+      <div class="logo-group">
+        <div class="agent-badge">DIAGNOSTIC & REVERT EXPLAINER</div>
+        <h1>Pharos / dApp Support Agent</h1>
+      </div>
+      <div class="network-badge">
+        <span class="pulse-dot"></span>
+        <span>PHAROS MAINNET · CHAIN 1672</span>
+      </div>
+    </header>
+
+    <div class="lead-card">
+      <p class="lead-text">
+        Automated customer and developer support agent that analyzes failed EVM transactions (status 0) on Pharos. Decodes standard <strong>Error(string)</strong>, compiler <strong>Panic(uint256)</strong>, <strong>OpenZeppelin Custom Errors</strong>, and out-of-gas events with step-by-step remediation advice.
+      </p>
+    </div>
+
+    <main class="main-grid">
+      <!-- Left Column: Diagnostic Controller & Failure Presets -->
+      <section class="panel-card form-panel">
+        <div class="panel-header">
+          <h2>Diagnostic controller</h2>
+          <span class="tag">EVM REVERT DECODER</span>
+        </div>
+
+        <div class="mode-toggle-group">
+          <button type="button" class="mode-toggle-btn active" id="modeSimBtn" data-mode="sim">Preset / Revert Bytecode</button>
+          <button type="button" class="mode-toggle-btn" id="modeRpcBtn" data-mode="rpc">Live On-Chain Tx (RPC)</button>
+        </div>
+
+        <div class="preset-section" id="presetSection">
+          <label class="section-label">Failure Presets</label>
+          <div class="preset-buttons">
+            <button type="button" class="preset-btn active" data-preset="erc20_balance">ERC-20: Exceeds Balance</button>
+            <button type="button" class="preset-btn" data-preset="erc20_allowance">ERC-20: Low Allowance</button>
+            <button type="button" class="preset-btn" data-preset="panic_overflow">Panic: Overflow (0x11)</button>
+            <button type="button" class="preset-btn" data-preset="panic_bounds">Panic: Out of Bounds (0x32)</button>
+            <button type="button" class="preset-btn" data-preset="out_of_gas">Out of Gas Error</button>
+            <button type="button" class="preset-btn" data-preset="custom_pause">Custom: EnforcedPause()</button>
+            <button type="button" class="preset-btn" data-preset="custom_unauth">Custom: Unauthorized()</button>
+            <button type="button" class="preset-btn" data-preset="custom_slippage">Custom: SlippageExceeded()</button>
+          </div>
+        </div>
+
+        <form id="diagForm" class="agent-form">
+          <!-- RPC Live Mode Field -->
+          <div class="form-group hidden" id="groupTxHash">
+            <label for="txHashInput">Transaction Hash (0x...)</label>
+            <input
+              type="text"
+              id="txHashInput"
+              name="txHash"
+              placeholder="0x9b1c78..."
+              value="0x6b0a44c64190279f7034b77c13a566e914fe5ec48192a0149bb89c19fa701234"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <span class="field-hint">Queries Pacific Mainnet RPC and runs eth_call simulation replay to extract revert data.</span>
+          </div>
+
+          <!-- Revert Bytecode Field -->
+          <div class="form-group" id="groupRevertHex">
+            <label for="revertHexInput">Revert ReturnData Hex (Bytecode)</label>
+            <textarea
+              id="revertHexInput"
+              name="revertHex"
+              rows="3"
+              spellcheck="false"
+              placeholder="0x08c379a0..."
+            >0x08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000002a45524332303a207472616e7366657220616d6f756e7420657863656564732062616c616e63650000000000000000000000000000000000000000000000000000</textarea>
+            <span class="field-hint">Supports standard Error(string) [0x08c379a0], Panic(uint256) [0x4e487b71], and custom error selectors.</span>
+          </div>
+
+          <!-- Gas Config Group -->
+          <div class="grid-2" id="groupGas">
+            <div class="form-group">
+              <label for="gasLimitInput">Gas Limit</label>
+              <input type="number" id="gasLimitInput" value="100000" />
+            </div>
+            <div class="form-group">
+              <label for="gasUsedInput">Gas Used</label>
+              <input type="number" id="gasUsedInput" value="45200" />
+            </div>
+          </div>
+
+          <div class="action-row">
+            <button type="button" id="btnQuickDecode" class="btn btn-secondary">
+              <span class="btn-icon">⚡</span> Quick Selector
+            </button>
+            <button type="submit" id="btnDiagnose" class="btn btn-primary">
+              <span class="btn-icon">🔍</span> Run Tx Diagnosis
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <!-- Right Column: Diagnostic Report & Provenance Trace -->
+      <section class="panel-card output-panel">
+        <div class="panel-header">
+          <h2>Root cause diagnosis & fix</h2>
+          <div class="status-indicator" id="statusIndicator">
+            <span class="status-pill status-ready">Ready</span>
+          </div>
+        </div>
+
+        <div id="loadingState" class="loading-state hidden">
+          <div class="spinner"></div>
+          <p id="loadingText">Decoding revert bytecode & generating remediation plan...</p>
+        </div>
+
+        <div id="resultContainer" class="result-container">
+          <div class="empty-state" id="emptyState">
+            <div class="empty-icon">🛠️</div>
+            <p>Select a failure scenario or enter transaction details to generate an automated root cause diagnosis and developer remediation guide.</p>
+          </div>
+
+          <div id="agentOutput" class="agent-output hidden">
+            <!-- Box 1: Failure Classification -->
+            <div class="trace-box">
+              <div class="step-header">
+                <span class="step-num">Step 1</span>
+                <h3>Failure Classification & Signature</h3>
+                <span class="badge badge-error" id="statusBadge">REVERTED</span>
+              </div>
+              <div class="step-body">
+                <div class="info-row">
+                  <span class="info-label">Error Type:</span>
+                  <code id="errorType" class="code-hl"></code>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">Selector:</span>
+                  <code id="errorSelector" class="code-hex"></code>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">Category:</span>
+                  <span id="errorCategory" class="badge"></span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">Revert String:</span>
+                  <p id="revertReasonText" class="text-alert"></p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Box 2: Actionable Remediation -->
+            <div class="trace-box">
+              <div class="step-header">
+                <span class="step-num">Step 2</span>
+                <h3>Actionable Remediation Guidance</h3>
+                <span class="badge badge-success">READY TO FIX</span>
+              </div>
+              <div class="step-body">
+                <div class="remediation-box">
+                  <h4>Recommended Developer / User Actions</h4>
+                  <ul class="remediation-list" id="remediationList">
+                    <!-- Populated by JS -->
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <!-- Box 3: Execution Context Stats -->
+            <div class="trace-box">
+              <div class="step-header">
+                <span class="step-num">Step 3</span>
+                <h3>Execution Context & Gas Metrics</h3>
+              </div>
+              <div class="step-body">
+                <div class="stat-grid">
+                  <div class="stat-card">
+                    <span class="stat-title">Gas Used / Limit</span>
+                    <span class="stat-val" id="statGas">45,200 / 100,000</span>
+                  </div>
+                  <div class="stat-card">
+                    <span class="stat-title">Gas Consumption</span>
+                    <span class="stat-val" id="statGasPct">45.2%</span>
+                  </div>
+                  <div class="stat-card">
+                    <span class="stat-title">Block Height</span>
+                    <span class="stat-val" id="statBlock">#981,245</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Box 4: Agent Audit & Replay Trail -->
+            <div class="trace-box">
+              <div class="step-header">
+                <span class="step-num">Step 4</span>
+                <h3>Diagnostic Audit Trail</h3>
+              </div>
+              <ul class="trace-list" id="traceList"></ul>
+            </div>
+
+            <div class="copy-row">
+              <button type="button" class="copy-btn" id="btnCopyJson">📋 Copy Raw JSON</button>
+              <button type="button" class="copy-btn" id="btnCopyMd">📝 Copy Markdown Report</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="app-footer">
+      <p>Built for the <strong>Pharos Agent Arena</strong> • EVM Revert & Panic Explainer • Ready for <code>ai.pharos.xyz</code> autonomous support agent integration.</p>
+    </footer>
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
