@@ -370,6 +370,21 @@ assert.strictEqual(ok.blockNumber, 22105995);
 assert.strictEqual(ok.gasLimit, 120000);
 console.log("  ✔ the success branch is normalised too");
 
+console.log("\n▶ Suite: sample encoder prefixes");
+
+// encodeSampleRevert builds the fixtures that the round-trip tests decode. A typo
+// here would make those tests agree with the typo instead of the decoder.
+assert.strictEqual(
+  encodeSampleRevert("Error(string)", "boom").slice(0, 10),
+  selectorOf("Error(string)"),
+  "Error(string) fixture prefix"
+);
+assert.strictEqual(
+  encodeSampleRevert("Panic(uint256)", 0x11).slice(0, 10),
+  selectorOf("Panic(uint256)"),
+  "Panic(uint256) fixture prefix"
+);
+
 console.log("\n=======================================================");
 console.log("🎉 ALL 8 dApp Support Agent TEST SUITES PASSED (100%)");
 console.log("=======================================================\n");

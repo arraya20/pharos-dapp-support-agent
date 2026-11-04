@@ -737,7 +737,7 @@ export async function fetchAndDiagnoseTx(txHash, rpcUrl = DEFAULT_PHAROS_RPC) {
  */
 export function encodeSampleRevert(type, messageOrCode) {
   if (type === "Error(string)") {
-    const selector = "08c379a0";
+    const selector = selectorOf("Error(string)").slice(2);
     const offset = "0000000000000000000000000000000000000000000000000000000000000020";
     const msg = String(messageOrCode || "Execution reverted");
     const lenHex = msg.length.toString(16).padStart(64, "0");
@@ -750,7 +750,7 @@ export function encodeSampleRevert(type, messageOrCode) {
   }
 
   if (type === "Panic(uint256)") {
-    const selector = "4e487b71";
+    const selector = selectorOf("Panic(uint256)").slice(2);
     const code = Number(messageOrCode || 1).toString(16).padStart(64, "0");
     return `0x${selector}${code}`;
   }
