@@ -111,6 +111,28 @@ await check("POST with an inline tx/receipt does not touch the network", async (
   assert.strictEqual(body.result.errorName, "EnforcedPause");
 });
 
+const rawPost = (raw) =>
+  onRequestPost({
+    request: new Request("https://agent.test/api/diagnose", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: raw
+    })
+  });
+
+await check("malformed JSON is a 400, not a blamed RPC", async () => {
+  const res = await rawPost("{not json");
+  const body = await res.json();
+  assert.strictEqual(res.status, 400);
+  assert.match(body.error, /valid JSON/);
+  assert.ok(!/Upstream/.test(body.error), "bad caller input must not be reported as an upstream failure");
+});
+
+await check("a JSON array body is rejected", async () => {
+  const res = await rawPost("[1,2,3]");
+  assert.strictEqual(res.status, 400);
+});
+
 await check("upstream failures are 502 and do not leak internals", async () => {
   // Stub fetch so this suite never touches the network, and so the failure path
   // is exercised deterministically rather than depending on the RPC's mood.

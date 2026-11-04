@@ -4,7 +4,7 @@
   "type": "module",
   "description": "Autonomous EVM transaction failure diagnostic agent, revert decoder, and developer remediation engine for Pharos Pacific Mainnet.",
   "scripts": {
-    "test": "node test/index.test.mjs && node test/api.test.mjs",
+    "test": "node test/index.test.mjs && node test/api.test.mjs && node scripts/gen-skill-table.mjs --check",
     "test:live": "RUN_LIVE_TESTS=1 node test/live.test.mjs",
     "dev": "npx wrangler pages dev public",
     "deploy": "npx wrangler pages deploy public --project-name pharos-dapp-support-agent"

@@ -12,7 +12,8 @@ import {
   selectorOf,
   canonicalSignature,
   buildCustomErrorTable,
-  decodeErrorWords
+  decodeErrorWords,
+  toDecimal
 } from "../src/diagnostics.mjs";
 
 console.log("🛠️  Running comprehensive test suite for Pharos dApp Support Agent...\n");
@@ -307,6 +308,68 @@ assert.match(unknown.message, /ABI/);
 assert.strictEqual(unknown.args.length, 2);
 console.log("  ✔ an unknown selector reports its words and admits the ABI is missing");
 
+// ============================================================================
+// SUITE: JSON-RPC shapes
+//
+// Live mode feeds this module receipt objects straight from JSON-RPC, where every
+// quantity is a hex string and the gas limit is called `gas`. Simulation feeds it
+// decimals and `gasLimit`. The two shapes silently disagreed: the dashboard
+// rendered "#0x1514f8a" for a block number and "168,085 / 0" for gas, and
+// out-of-gas detection could never fire on a live transaction.
+// ============================================================================
+console.log("\n▶ Suite: JSON-RPC quantity handling");
+
+assert.strictEqual(toDecimal("0x29095"), 168085);
+assert.strictEqual(toDecimal("168085"), 168085);
+assert.strictEqual(toDecimal(168085), 168085);
+assert.strictEqual(toDecimal(""), null);
+assert.strictEqual(toDecimal(undefined), null);
+assert.strictEqual(toDecimal(null), null);
+assert.strictEqual(toDecimal("not a number"), null);
+console.log("  ✔ hex, decimal, number and junk all normalise predictably");
+
+// A live transaction exactly as JSON-RPC delivers it.
+const rpcReceipt = {
+  status: "0x0",
+  gasUsed: "0x29095",
+  blockNumber: "0x1514f8a",
+  transactionHash: "0x" + "ab".repeat(32),
+  from: "0x" + "11".repeat(20),
+  to: "0x" + "22".repeat(20)
+};
+const rpcTx = { hash: rpcReceipt.transactionHash, gas: "0x30d40", input: "0x", value: "0x0" };
+
+const reverted = analyzeTxFailure({ tx: rpcTx, receipt: rpcReceipt, returnData: "0x2c19b8b8" });
+assert.strictEqual(reverted.status, "REVERTED");
+assert.strictEqual(reverted.gasUsed, 168085, "gasUsed must be decimal for the UI");
+assert.strictEqual(reverted.blockNumber, 22105994, "blockNumber must be decimal for the UI");
+assert.strictEqual(reverted.gasLimit, 200000, "gasLimit must come from tx.gas");
+assert.strictEqual(typeof reverted.gasUsed, "number");
+assert.strictEqual(typeof reverted.blockNumber, "number");
+console.log("  ✔ a hex receipt yields decimal gas and block, limit read from tx.gas");
+
+// gasUsed == gas limit, JSON-RPC shape: must classify as OUT_OF_GAS.
+const oog = analyzeTxFailure({
+  tx: { gas: "0xea60" },
+  receipt: { status: "0x0", gasUsed: "0xea60", blockNumber: "0x10", transactionHash: "0x" + "cd".repeat(32) },
+  returnData: "0x"
+});
+assert.strictEqual(oog.status, "OUT_OF_GAS", "out-of-gas must fire for live-shape input");
+assert.strictEqual(oog.gasUsed, 60000);
+assert.strictEqual(oog.gasLimit, 60000);
+console.log("  ✔ out-of-gas detection works on a JSON-RPC transaction");
+
+// The success branch was left un-normalised while the others were fixed.
+const ok = analyzeTxFailure({
+  tx: { gas: "0x1d4c0" },
+  receipt: { status: "0x1", gasUsed: "0x5208", blockNumber: "0x1514f8b", transactionHash: "0x" + "ef".repeat(32) }
+});
+assert.strictEqual(ok.status, "SUCCESS");
+assert.strictEqual(ok.gasUsed, 21000);
+assert.strictEqual(ok.blockNumber, 22105995);
+assert.strictEqual(ok.gasLimit, 120000);
+console.log("  ✔ the success branch is normalised too");
+
 console.log("\n=======================================================");
-console.log("🎉 ALL 7 dApp Support Agent TEST SUITES PASSED (100%)");
+console.log("🎉 ALL 8 dApp Support Agent TEST SUITES PASSED (100%)");
 console.log("=======================================================\n");

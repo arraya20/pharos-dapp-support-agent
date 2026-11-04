@@ -2,7 +2,6 @@
 
 [![Pharos Pacific Mainnet](https://img.shields.io/badge/Pharos%20Mainnet-Chain%201672-ff6b35.svg)](https://rpc.pharos.xyz)
 [![Pharos Agent Arena](https://img.shields.io/badge/Agent%20Arena-Task%20dapp--support--agent-e11d48.svg)](https://pharos-agent-arena.vercel.app/#tasks)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 An autonomous customer and developer support agent that analyzes failed smart contract transactions (`status: 0`), decodes EVM revert bytecode (Standard `Error(string)`, compiler `Panic(uint256)`, OpenZeppelin v5 & DeFi Custom Errors), and synthesizes step-by-step remediation advice for users and protocol developers.
 
@@ -17,15 +16,28 @@ An autonomous customer and developer support agent that analyzes failed smart co
    - Selectors are **not typed by hand**. `src/diagnostics.mjs` carries a keccak-256 implementation and hashes the signature strings at load, so a selector cannot disagree with the error it names. A hand-written table of 18 selectors previously had 13 of them attached to the wrong error.
    - **Unrecognised custom errors are still useful**: the argument words are decoded as words (decimal + raw hex) instead of the error being reported as an opaque selector. No parameter names are invented, because naming them requires the contract ABI.
 2. **Resource & Gas Limit Diagnostics:**
-   - Flags out-of-gas events when `gasUsed >= gasLimit` with tailored recommendations.
+   - Flags out-of-gas events when `gasUsed >= gasLimit`. The limit is read as
+     `tx.gasLimit ?? tx.gas ?? receipt.gasLimit`, because JSON-RPC calls it `gas` — reading only
+     `gasLimit` meant the check never fired on a live transaction.
 3. **Live On-Chain Simulation Replay:**
    - Fetches transaction receipts and re-simulates failed calls against Pharos Pacific Mainnet RPC (`https://rpc.pharos.xyz`, chain id 1672) via `eth_call` at the failed transaction's block height.
    - A missing receipt, an RPC error and a pending transaction are three different answers. An RPC-level error is surfaced as a failure; it is never reported as "transaction dropped".
+   - JSON-RPC returns every quantity as hex (`"0x29095"`); simulation passes decimals. Both are
+     normalised to decimal numbers before leaving the module, so consumers see one shape.
    - Requests time out after 10s. The public endpoint enforces a compute-unit rate limit (`cu limit exceeded; Request too fast per second`), so callers should not batch aggressively.
 4. **Actionable Remediation Engine:**
    - Outputs clear, non-technical instructions for end-users as well as technical fixes for Solidity developers.
 5. **Cyberpunk Web UI & Cloudflare Serverless Function:**
    - Interactive diagnostic dashboard with instant failure presets, live execution provenance, copyable JSON & Markdown reports, and `/api/diagnose` endpoint.
+   - When the API fails, the UI shows the error and hides the result. It used to fall back to an
+     invented diagnosis — `REVERTED`, "ERC20: transfer amount exceeds balance", 45,200 gas, plus an
+     audit trail claiming a receipt had been fetched. A support agent that fabricates an answer when
+     it is broken is worse than one that says it is broken.
+   - `PENDING_OR_DROPPED` renders as *not found*, not as a reverted transaction.
+6. **Documentation cannot drift:**
+   - `SKILL.md`'s selector table is generated from the decoder by
+     `scripts/gen-skill-table.mjs`, and the test suite fails if it disagrees. The hand-typed skill
+     previously shipped the same thirteen wrong selectors the code had.
 
 ---
 
@@ -33,7 +45,7 @@ An autonomous customer and developer support agent that analyzes failed smart co
 
 ### 1. Run Automated Tests
 ```bash
-npm test              # offline: decoder suites + API handler (16 cases)
+npm test              # offline: decoder suites + API handler (18 cases)
 npm run test:live     # opt-in, hits Pharos mainnet against pinned real txs
 ```
 
@@ -89,8 +101,8 @@ npx wrangler pages deploy public --project-name pharos-dapp-support-agent
       "Top up wallet native PROS balance or required ERC-20 token balance.",
       "Ensure you have extra PROS remaining to pay for transaction gas fees."
     ],
-    "gasUsed": "45200",
-    "gasLimit": "100000",
+    "gasUsed": 45200,
+    "gasLimit": 100000,
     "blockNumber": 981245
   }
 }
@@ -104,12 +116,17 @@ Everything below was produced by running the code, not by inspection.
 
 | Check | Result |
 | --- | --- |
-| `npm test` | 7 decoder suites + 16 API cases, 0 failures |
+| `npm test` | 8 decoder suites + 18 API cases, 0 failures |
+| `node scripts/gen-skill-table.mjs --check` | SKILL.md selectors match the decoder |
 | `npm run test:live` | 5/5 against Pharos mainnet |
 | Real failed tx | `0x1746ea12…ab08` block 22,105,994 → `REVERTED`, selector `0x2c19b8b8`, 2 argument words |
 | Real successful tx | `0xa1c43760…6bab` → `SUCCESS` |
 | Endpoint | `rpc.pharos.xyz` answers `eth_chainId` = `0x688` (1672) |
-| UI | live mode exercised in a browser: selector, argument words and audit trail render |
+| UI | live mode exercised in a browser: `#22,105,994`, `168,085 / 450,000`, 37.4%, two argument words |
+| UI failure path | API forced to 503 in the browser: error shown, result panel hidden, no fabricated diagnosis |
+| Malformed JSON body | `400 {"error":"body must be valid JSON"}`, not a blamed upstream |
+| SSRF probes | `169.254.169.254` → 400; `rpc.pharos.xyz.` trailing dot → 400 host not allowed |
+| Unknown method | `PUT` → `405` |
 
 ## 🏆 Pharos Agent Arena Submission Proof
 

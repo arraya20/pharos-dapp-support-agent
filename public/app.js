@@ -86,6 +86,9 @@ const errorCategory = document.getElementById("errorCategory");
 const revertReasonText = document.getElementById("revertReasonText");
 const remediationList = document.getElementById("remediationList");
 
+const argsRow = document.getElementById("argsRow");
+const errorArgsText = document.getElementById("errorArgsText");
+
 const statGas = document.getElementById("statGas");
 const statGasPct = document.getElementById("statGasPct");
 const statBlock = document.getElementById("statBlock");
@@ -153,32 +156,20 @@ async function executeDiagnosis() {
     let result;
     if (currentMode === "rpc") {
       const txHash = txHashInput.value.trim();
+      // This used to fall back to a made-up diagnosis when the API failed:
+      // status REVERTED, "ERC20: transfer amount exceeds balance", 45,200 gas and
+      // an audit trail claiming a receipt had been fetched. A support agent that
+      // invents an answer when it is broken is worse than one that says it is
+      // broken, because the answer looks exactly like a real one.
       const res = await fetch(`/api/diagnose?txHash=${encodeURIComponent(txHash)}`);
-      if (res.ok) {
-        const json = await res.json();
-        result = json.result;
-      } else {
-        // Fallback simulation for offline/preview
-        result = {
-          status: "REVERTED",
-          revertType: "Error(string)",
-          selector: "0x08c379a0",
-          revertReason: "ERC20: transfer amount exceeds balance",
-          category: "SolidityError",
-          gasUsed: "45200",
-          gasLimit: "100000",
-          blockNumber: 981245,
-          txHash,
-          steps: [
-            "Top up wallet native PROS balance or required ERC-20 token balance.",
-            "Ensure you have extra PROS remaining to pay for transaction gas fees."
-          ],
-          auditTrail: [
-            { time: new Date().toISOString(), step: "1. Querying Receipt", detail: `Fetched receipt for ${txHash}` },
-            { time: new Date().toISOString(), step: "2. Replay & Decode", detail: "Extracted Error(string) signature" }
-          ]
-        };
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok || !json || json.success !== true) {
+        throw new Error(
+          (json && json.error) || `Diagnostic API returned HTTP ${res.status}. No result was produced.`
+        );
       }
+      result = json.result;
     } else {
       const revertHex = revertHexInput.value.trim();
       const gasLimit = gasLimitInput.value;
@@ -224,10 +215,28 @@ function renderResult(res) {
     statusBadge.textContent = "SUCCESS";
     statusBadge.className = "badge badge-success";
     statusIndicator.innerHTML = '<span class="status-pill status-success">Success</span>';
+  } else if (res.status === "PENDING_OR_DROPPED") {
+    // Previously fell through to the REVERTED branch, so "no receipt found" was
+    // shown to the user as a reverted transaction.
+    statusBadge.textContent = "NOT FOUND";
+    statusBadge.className = "badge badge-warn";
+    statusIndicator.innerHTML = '<span class="status-pill status-running">Pending or dropped</span>';
   } else {
     statusBadge.textContent = "REVERTED (STATUS 0)";
     statusBadge.className = "badge badge-error";
     statusIndicator.innerHTML = '<span class="status-pill status-error">Reverted</span>';
+  }
+
+  // Unknown custom errors carry their argument words; showing them is the whole
+  // point of decoding structurally instead of reporting a bare selector.
+  const args = res.errorArgs || [];
+  if (args.length > 0) {
+    argsRow.classList.remove("hidden");
+    errorArgsText.textContent = args
+      .map((a) => `[${a.index}] ${a.asUint !== undefined ? a.asUint : a.word}`)
+      .join("  ·  ");
+  } else {
+    argsRow.classList.add("hidden");
   }
 
   errorType.textContent = res.revertType || res.status;
@@ -247,10 +256,12 @@ function renderResult(res) {
   // Gas stats
   const used = Number(res.gasUsed || 0);
   const limit = Number(res.gasLimit || 0);
-  statGas.textContent = `${used.toLocaleString()} / ${limit.toLocaleString()}`;
-  const pct = limit > 0 ? ((used / limit) * 100).toFixed(1) : "0.0";
-  statGasPct.textContent = `${pct}%`;
-  statBlock.textContent = `#${res.blockNumber ? res.blockNumber.toLocaleString() : "981,245"}`;
+  statGas.textContent = limit > 0
+    ? `${used.toLocaleString()} / ${limit.toLocaleString()}`
+    : `${used.toLocaleString()} / unknown`;
+  statGasPct.textContent = limit > 0 ? `${((used / limit) * 100).toFixed(1)}%` : "n/a";
+  statBlock.textContent =
+    res.blockNumber != null ? `#${Number(res.blockNumber).toLocaleString()}` : "unknown";
 
   // Audit trail
   traceList.innerHTML = "";

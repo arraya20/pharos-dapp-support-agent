@@ -495,6 +495,27 @@ export function generateRemediationSteps(diagnostic) {
  * @param {object} params { tx, receipt, returnData }
  * @returns {object} Comprehensive diagnostic report
  */
+/**
+ * RPC quantities arrive as hex strings ("0x29095"). The API contract and the
+ * browser UI both expect decimal, and live mode was quietly violating that: the
+ * dashboard rendered "#0x1514f8a" for the block and "168,085 / 0" for gas,
+ * because gasLimit was read from tx.gasLimit while JSON-RPC calls it tx.gas.
+ * Normalise in one place rather than in every consumer.
+ *
+ * @returns {number|null} decimal value, or null when the input is not a number
+ */
+export function toDecimal(value) {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value === "bigint") return Number(value);
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  const parsed = /^0x/i.test(trimmed)
+    ? Number.parseInt(trimmed, 16)
+    : Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 export function analyzeTxFailure({ tx, receipt, returnData }) {
   if (!receipt) {
     return {
@@ -513,24 +534,29 @@ export function analyzeTxFailure({ tx, receipt, returnData }) {
       diagnosis: "Transaction succeeded. No failure detected.",
       remediation: "Transaction completed successfully.",
       steps: ["No action required."],
-      blockNumber: receipt.blockNumber,
-      gasUsed: receipt.gasUsed,
+      blockNumber: toDecimal(receipt.blockNumber),
+      gasUsed: toDecimal(receipt.gasUsed),
+      gasLimit: toDecimal(tx?.gasLimit ?? tx?.gas ?? receipt.gasLimit),
       txHash: receipt.transactionHash
     };
   }
 
   // Failed status (0 or "0x0")
-  const gasUsed = BigInt(receipt.gasUsed || "0");
-  const gasLimit = BigInt(tx?.gasLimit || receipt.gasLimit || "0");
+  // JSON-RPC transactions carry the limit as `gas`, not `gasLimit`. Reading only
+  // `gasLimit` meant out-of-gas detection could never fire for a live
+  // transaction -- the headline feature was dead in the one mode that matters.
+  const gasLimitRaw = tx?.gasLimit ?? tx?.gas ?? receipt.gasLimit;
+  const gasUsed = BigInt(toDecimal(receipt.gasUsed) ?? 0);
+  const gasLimit = BigInt(toDecimal(gasLimitRaw) ?? 0);
 
   if (gasLimit > 0n && gasUsed >= gasLimit) {
     const diag = {
       status: "OUT_OF_GAS",
       diagnosis: "Transaction ran out of gas. Gas used reached the transaction gas limit.",
       remediation: "Increase transaction gas limit before re-submitting.",
-      gasUsed: receipt.gasUsed,
-      gasLimit: tx?.gasLimit || receipt.gasLimit,
-      blockNumber: receipt.blockNumber,
+      gasUsed: toDecimal(receipt.gasUsed),
+      gasLimit: toDecimal(gasLimitRaw),
+      blockNumber: toDecimal(receipt.blockNumber),
       txHash: receipt.transactionHash
     };
     diag.steps = generateRemediationSteps(diag);
@@ -549,9 +575,9 @@ export function analyzeTxFailure({ tx, receipt, returnData }) {
     errorArgs: revert.args || null,
     diagnosis: `Transaction reverted with ${revert.type}: "${revert.message}"`,
     remediation: "Review parameter inputs and preconditions.",
-    blockNumber: receipt.blockNumber,
-    gasUsed: receipt.gasUsed,
-    gasLimit: tx?.gasLimit || receipt.gasLimit,
+    blockNumber: toDecimal(receipt.blockNumber),
+    gasUsed: toDecimal(receipt.gasUsed),
+    gasLimit: toDecimal(gasLimitRaw),
     from: tx?.from || receipt.from,
     to: tx?.to || receipt.to,
     txHash: receipt.transactionHash || tx?.hash
@@ -632,6 +658,7 @@ export async function fetchAndDiagnoseTx(txHash, rpcUrl = DEFAULT_PHAROS_RPC) {
 
   // 3. If failed and no revert string in receipt, run eth_call replay
   let returnData = "0x";
+  let replayError = null;
   if (receipt.status === 0 || receipt.status === "0x0") {
     auditTrail.push({
       time: new Date().toISOString(),
@@ -664,9 +691,15 @@ export async function fetchAndDiagnoseTx(txHash, rpcUrl = DEFAULT_PHAROS_RPC) {
         returnData = callJson.error.data;
       } else if (callJson.result) {
         returnData = callJson.result;
+      } else if (callJson.error) {
+        // The node refused the call. That is not the same as a contract that
+        // reverted with no data, and the two need different advice.
+        replayError = callJson.error.message || "eth_call returned an error";
       }
-    } catch {
-      // Replay fallback
+    } catch (err) {
+      // Swallowing this used to turn "the RPC rate-limited us" into "the
+      // contract reverted silently" -- a confident wrong answer.
+      replayError = err?.message || String(err);
     }
   }
 
@@ -678,6 +711,22 @@ export async function fetchAndDiagnoseTx(txHash, rpcUrl = DEFAULT_PHAROS_RPC) {
 
   const analysis = analyzeTxFailure({ tx, receipt, returnData });
   analysis.auditTrail = auditTrail;
+
+  // Only claim "reverted with no data" when the replay actually ran.
+  if (replayError && returnData === "0x") {
+    analysis.revertDataUnavailable = true;
+    analysis.replayError = replayError;
+    analysis.steps = [
+      `Revert data could not be recovered: ${replayError}`,
+      "The transaction did fail (receipt status 0), but the replay did not run, so the reason is unknown rather than empty.",
+      ...(analysis.steps || [])
+    ];
+    auditTrail.push({
+      time: new Date().toISOString(),
+      step: "3b. Replay Failed",
+      detail: replayError
+    });
+  }
   analysis.network = "Pharos Pacific Mainnet (Chain 1672)";
   analysis.rpcUrl = rpcUrl;
   return analysis;

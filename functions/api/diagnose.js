@@ -107,8 +107,17 @@ export async function onRequestGet({ request }) {
 
 export async function onRequestPost({ request }) {
   try {
-    const body = await request.json();
-    if (!body || typeof body !== "object") {
+    // A malformed body is the caller's mistake and must say so. Parsing it
+    // inside the outer try meant the SyntaxError fell through to the generic
+    // handler and was reported as "Upstream RPC request failed" -- blaming the
+    // node for bad JSON, with a 502 instead of a 400.
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      throw new BadRequest("body must be valid JSON");
+    }
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
       throw new BadRequest("body must be a JSON object");
     }
     const rpcUrl = resolveRpcUrl(body.rpcUrl);
