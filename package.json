@@ -19,6 +19,18 @@
     "panic-code",
     "custom-errors"
   ],
-  "author": "Pharos Community Developer",
-  "license": "MIT"
+  "author": "Namri",
+  "license": "MIT",
+  "files": [
+    "src",
+    "scripts",
+    "functions",
+    "public",
+    "SKILL.md",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
 }
