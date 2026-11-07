@@ -246,12 +246,13 @@ console.log("\n▶ Suite 7: Browser bundle matches the source module");
 {
   const here = new URL("../", import.meta.url);
   const src = readFileSync(new URL("src/diagnostics.mjs", here), "utf8");
-  const pub = readFileSync(new URL("public/diagnostics.mjs", here), "utf8");
-  assert.strictEqual(
-    pub,
-    src,
-    "public/diagnostics.mjs must be a byte-identical copy of src/diagnostics.mjs (run: cp src/diagnostics.mjs public/diagnostics.mjs)"
-  );
+  for (const file of ["diagnostics.mjs", "chain-mcp.mjs"]) {
+    assert.strictEqual(
+      readFileSync(new URL("public/" + file, here), "utf8"),
+      readFileSync(new URL("src/" + file, here), "utf8"),
+      "public/" + file + " must be a byte-identical copy of src/" + file + " (run: npm run sync:public)"
+    );
+  }
   // The module has to run in a browser: no Node globals.
   assert.ok(!/\bBuffer\s*[.(]/.test(src), "diagnostics.mjs must not depend on Node's Buffer");
   assert.ok(!/require\(/.test(src), "diagnostics.mjs must stay pure ESM");

@@ -1,6 +1,8 @@
 // Pharos dApp Support Agent - Advanced EVM Diagnostic & Revert Explainer
 // Zero-dependency pure ESM module for Pharos Pacific Mainnet (Chain ID 1672) & Atlantic Testnet
 
+import { CHAIN_MCP_URL, McpTransportError, createChainMcpTransport, createRpcTransport } from "./chain-mcp.mjs";
+
 // pacific-rpc.pharos.xyz, which this file used to point at, has no A record at
 // all. rpc.pharos.xyz answers eth_chainId with 0x688 (1672), the Pacific
 // Mainnet chain id, so that is the one the docs and the explorer agree on.
@@ -592,67 +594,87 @@ export function analyzeTxFailure({ tx, receipt, returnData }) {
 }
 
 /**
- * Fetch transaction & receipt from Pharos RPC and perform live diagnostic replay
+ * Fetch transaction & receipt for a hash and perform a live diagnostic replay.
+ *
+ * Data comes from the Pharos Chain MCP (`get_transaction_receipt`,
+ * `get_transaction`, `eth_call`). If the MCP server itself cannot be reached or
+ * breaks protocol, the run switches to direct JSON-RPC and says so (`via`,
+ * `mcpFallbackReason`, and an audit-trail entry). A failure the *tool* reports,
+ * such as an execution revert, is data and never triggers a fallback.
+ *
  * @param {string} txHash 0x-prefixed transaction hash
- * @param {string} rpcUrl JSON-RPC endpoint
+ * @param {string|object} [options] A string is a direct RPC URL (legacy form).
+ *   Otherwise `{ rpcUrl, mcpUrl, transport: "auto"|"mcp"|"rpc", fetchImpl }`.
  * @returns {Promise<object>} Live analysis result with provenance trace
  */
-export async function fetchAndDiagnoseTx(txHash, rpcUrl = DEFAULT_PHAROS_RPC) {
-  const auditTrail = [];
-  auditTrail.push({ time: new Date().toISOString(), step: "1. Querying Receipt", detail: `Fetching receipt for ${txHash}` });
+export async function fetchAndDiagnoseTx(txHash, options = {}) {
+  const opts = typeof options === "string" ? { rpcUrl: options, transport: "rpc" } : options || {};
+  const rpcUrl = opts.rpcUrl || DEFAULT_PHAROS_RPC;
+  const mode = opts.transport || "auto";
+  const rpc = createRpcTransport({ url: rpcUrl, timeoutMs: RPC_TIMEOUT_MS, fetchImpl: opts.fetchImpl });
+  const mcp =
+    mode === "rpc"
+      ? null
+      : createChainMcpTransport({
+          url: opts.mcpUrl || CHAIN_MCP_URL,
+          timeoutMs: RPC_TIMEOUT_MS,
+          fetchImpl: opts.fetchImpl
+        });
 
-  // 1. Fetch Receipt
-  const receiptRes = await fetch(rpcUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    signal: AbortSignal.timeout(RPC_TIMEOUT_MS),
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "eth_getTransactionReceipt",
-      params: [txHash]
-    })
+  const auditTrail = [];
+  const note = (step, detail) => auditTrail.push({ time: new Date().toISOString(), step, detail });
+
+  let active = mcp || rpc;
+  let mcpFallbackReason = null;
+  note("0. Data Source", `${active.name} · ${active.endpoint}`);
+
+  // One place decides which transport answers. Only a transport failure of the
+  // MCP server moves us to RPC; a tool-level `{ error }` is returned as-is.
+  async function call(method, params) {
+    try {
+      return await active.request(method, params);
+    } catch (err) {
+      if (!(err instanceof McpTransportError) || mode === "mcp") throw err;
+      mcpFallbackReason = err.message;
+      active = rpc;
+      note("0b. Falling Back To RPC", `${err.message}. Using ${rpc.endpoint} instead.`);
+      return rpc.request(method, params);
+    }
+  }
+  const provenance = () => ({
+    via: active.name,
+    endpoint: active.endpoint,
+    ...(mcpFallbackReason ? { mcpFallbackReason } : {})
   });
 
-  const receiptJson = await receiptRes.json();
+  note("1. Querying Receipt", `Fetching receipt for ${txHash}`);
+
+  // 1. Fetch Receipt
+  const receiptJson = await call("eth_getTransactionReceipt", [txHash]);
   // An RPC-level error (rate limit, unsupported method, bad gateway) used to be
   // read as "receipt not found", so the agent told users their transaction had
   // been dropped when in fact the node had refused to answer.
   if (receiptJson.error) {
-    throw new Error(`RPC eth_getTransactionReceipt failed: ${receiptJson.error.message || "unknown error"}`);
+    throw new Error(`eth_getTransactionReceipt failed via ${active.name}: ${receiptJson.error.message || "unknown error"}`);
   }
   const receipt = receiptJson.result;
 
   if (!receipt) {
     return {
       status: "PENDING_OR_DROPPED",
-      diagnosis: "Transaction receipt not found on Pharos RPC. The transaction may be pending, dropped, or invalid hash.",
+      diagnosis: "Transaction receipt not found on Pharos. The transaction may be pending, dropped, or invalid hash.",
       steps: ["Confirm transaction hash on https://pharosscan.xyz", "Check if tx is still in mempool"],
-      auditTrail
+      auditTrail,
+      ...provenance()
     };
   }
 
-  auditTrail.push({
-    time: new Date().toISOString(),
-    step: "2. Receipt Evaluated",
-    detail: `Status: ${receipt.status}, Block: ${receipt.blockNumber}, Gas Used: ${parseInt(receipt.gasUsed, 16) || receipt.gasUsed}`
-  });
+  note("2. Receipt Evaluated", `Status: ${receipt.status}, Block: ${receipt.blockNumber}, Gas Used: ${parseInt(receipt.gasUsed, 16) || receipt.gasUsed}`);
 
   // 2. Fetch Tx details
-  const txRes = await fetch(rpcUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    signal: AbortSignal.timeout(RPC_TIMEOUT_MS),
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: 2,
-      method: "eth_getTransactionByHash",
-      params: [txHash]
-    })
-  });
-  const txJson = await txRes.json();
+  const txJson = await call("eth_getTransactionByHash", [txHash]);
   if (txJson.error) {
-    throw new Error(`RPC eth_getTransactionByHash failed: ${txJson.error.message || "unknown error"}`);
+    throw new Error(`eth_getTransactionByHash failed via ${active.name}: ${txJson.error.message || "unknown error"}`);
   }
   const tx = txJson.result || {};
 
@@ -660,33 +682,13 @@ export async function fetchAndDiagnoseTx(txHash, rpcUrl = DEFAULT_PHAROS_RPC) {
   let returnData = "0x";
   let replayError = null;
   if (receipt.status === 0 || receipt.status === "0x0") {
-    auditTrail.push({
-      time: new Date().toISOString(),
-      step: "3. Replaying Revert via eth_call",
-      detail: `Simulating execution on target ${tx.to} to extract revert bytes`
-    });
+    note("3. Replaying Revert via eth_call", `Simulating execution on target ${tx.to} to extract revert bytes`);
 
     try {
-      const callRes = await fetch(rpcUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: AbortSignal.timeout(RPC_TIMEOUT_MS),
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: 3,
-          method: "eth_call",
-          params: [
-            {
-              from: tx.from,
-              to: tx.to,
-              data: tx.input,
-              value: tx.value
-            },
-            receipt.blockNumber || "latest"
-          ]
-        })
-      });
-      const callJson = await callRes.json();
+      const callJson = await call("eth_call", [
+        { from: tx.from, to: tx.to, data: tx.input, value: tx.value },
+        receipt.blockNumber || "latest"
+      ]);
       if (callJson.error && callJson.error.data) {
         returnData = callJson.error.data;
       } else if (callJson.result) {
@@ -703,11 +705,7 @@ export async function fetchAndDiagnoseTx(txHash, rpcUrl = DEFAULT_PHAROS_RPC) {
     }
   }
 
-  auditTrail.push({
-    time: new Date().toISOString(),
-    step: "4. Decoding Diagnostic Reason",
-    detail: `Raw return data: ${returnData.slice(0, 34)}...`
-  });
+  note("4. Decoding Diagnostic Reason", `Raw return data: ${returnData.slice(0, 34)}...`);
 
   const analysis = analyzeTxFailure({ tx, receipt, returnData });
   analysis.auditTrail = auditTrail;
@@ -721,14 +719,11 @@ export async function fetchAndDiagnoseTx(txHash, rpcUrl = DEFAULT_PHAROS_RPC) {
       "The transaction did fail (receipt status 0), but the replay did not run, so the reason is unknown rather than empty.",
       ...(analysis.steps || [])
     ];
-    auditTrail.push({
-      time: new Date().toISOString(),
-      step: "3b. Replay Failed",
-      detail: replayError
-    });
+    note("3b. Replay Failed", replayError);
   }
   analysis.network = "Pharos Pacific Mainnet (Chain 1672)";
   analysis.rpcUrl = rpcUrl;
+  Object.assign(analysis, provenance());
   return analysis;
 }
 

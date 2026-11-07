@@ -55,6 +55,14 @@ function resolveRpcUrl(candidate) {
   return url.toString();
 }
 
+// Chain MCP is the default data source. A caller who names an rpcUrl has asked
+// for that node specifically, so only then do we skip MCP. The URL is still
+// validated against the allowlist either way.
+function liveOptions(rawRpcUrl) {
+  const rpcUrl = resolveRpcUrl(rawRpcUrl);
+  return rawRpcUrl ? { rpcUrl, transport: "rpc" } : { rpcUrl };
+}
+
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: CORS_HEADERS });
 }
@@ -75,7 +83,7 @@ export async function onRequestGet({ request }) {
     const url = new URL(request.url);
     const txHash = url.searchParams.get("txHash") || url.searchParams.get("hash");
     const revertHex = url.searchParams.get("revertHex") || url.searchParams.get("hex");
-    const rpcUrl = resolveRpcUrl(url.searchParams.get("rpcUrl"));
+    const live = liveOptions(url.searchParams.get("rpcUrl"));
 
     if (revertHex) {
       if (!/^0x[0-9a-fA-F]{0,4098}$/.test(revertHex)) {
@@ -88,13 +96,14 @@ export async function onRequestGet({ request }) {
       if (!/^0x[0-9a-fA-F]{64}$/.test(txHash)) {
         throw new BadRequest("txHash must be a 32-byte 0x-prefixed hash");
       }
-      return json({ success: true, result: await fetchAndDiagnoseTx(txHash, rpcUrl) });
+      return json({ success: true, result: await fetchAndDiagnoseTx(txHash, live) });
     }
 
     return json({
       success: true,
       service: "Pharos dApp Support Agent API",
       network: "Pharos Pacific Mainnet (Chain 1672)",
+      dataSource: "Pharos Chain MCP (https://mcp.pharos.xyz/mcp), falling back to https://rpc.pharos.xyz and reporting it in `via`",
       usage: {
         post: "/api/diagnose with body { txHash } or { tx, receipt, returnData }",
         get: "/api/diagnose?txHash=0x... or ?revertHex=0x..."
@@ -120,13 +129,13 @@ export async function onRequestPost({ request }) {
     if (!body || typeof body !== "object" || Array.isArray(body)) {
       throw new BadRequest("body must be a JSON object");
     }
-    const rpcUrl = resolveRpcUrl(body.rpcUrl);
+    const live = liveOptions(body.rpcUrl);
 
     if (body.txHash && (!body.receipt || Object.keys(body.receipt).length === 0)) {
       if (!/^0x[0-9a-fA-F]{64}$/.test(String(body.txHash))) {
         throw new BadRequest("txHash must be a 32-byte 0x-prefixed hash");
       }
-      return json({ success: true, result: await fetchAndDiagnoseTx(body.txHash, rpcUrl) });
+      return json({ success: true, result: await fetchAndDiagnoseTx(body.txHash, live) });
     }
 
     return json({ success: true, result: analyzeTxFailure(body) });

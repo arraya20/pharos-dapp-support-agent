@@ -2,12 +2,13 @@
   "name": "pharos-dapp-support-agent",
   "version": "1.0.0",
   "type": "module",
-  "description": "Autonomous EVM transaction failure diagnostic agent, revert decoder, and developer remediation engine for Pharos Pacific Mainnet.",
+  "description": "Explains why a Pharos transaction failed: fetches it through the Pharos Chain MCP, decodes the revert, and says what to do about it.",
   "scripts": {
-    "test": "node test/index.test.mjs && node test/api.test.mjs && node scripts/gen-skill-table.mjs --check",
+    "test": "node test/index.test.mjs && node test/chain-mcp.test.mjs && node test/api.test.mjs && node scripts/gen-skill-table.mjs --check",
     "test:live": "RUN_LIVE_TESTS=1 node test/live.test.mjs",
     "dev": "npx wrangler pages dev public",
-    "deploy": "npx wrangler pages deploy public --project-name pharos-dapp-support-agent"
+    "deploy": "npx wrangler pages deploy public --project-name pharos-dapp-support-agent",
+    "sync:public": "cp src/diagnostics.mjs public/diagnostics.mjs && cp src/chain-mcp.mjs public/chain-mcp.mjs"
   },
   "keywords": [
     "pharos",
@@ -17,9 +18,11 @@
     "evm",
     "solidity",
     "panic-code",
-    "custom-errors"
+    "custom-errors",
+    "chain-mcp",
+    "mcp"
   ],
-  "author": "Namri",
+  "author": "arraya20",
   "license": "MIT",
   "files": [
     "src",
@@ -32,5 +35,16 @@
   ],
   "publishConfig": {
     "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/arraya20/pharos-dapp-support-agent.git"
+  },
+  "homepage": "https://github.com/arraya20/pharos-dapp-support-agent#readme",
+  "bugs": {
+    "url": "https://github.com/arraya20/pharos-dapp-support-agent/issues"
+  },
+  "engines": {
+    "node": ">=20.11"
   }
 }
