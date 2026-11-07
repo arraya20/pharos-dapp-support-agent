@@ -19,15 +19,15 @@ An autonomous customer and developer support agent that analyzes failed smart co
    - Flags out-of-gas events when `gasUsed >= gasLimit`. The limit is read as
      `tx.gasLimit ?? tx.gas ?? receipt.gasLimit`, because JSON-RPC calls it `gas` — reading only
      `gasLimit` meant the check never fired on a live transaction.
-3. **Live On-Chain Simulation Replay:**
-   - Fetches transaction receipts and re-simulates failed calls against Pharos Pacific Mainnet RPC (`https://rpc.pharos.xyz`, chain id 1672) via `eth_call` at the failed transaction's block height.
+3. **Live On-Chain Simulation Replay via Pharos Chain MCP:**
+   - Fetches transaction receipts and re-simulates failed calls through the official **Pharos Chain MCP** (`https://mcp.pharos.xyz/mcp`, chain id 1672) using `get_transaction_receipt`, `get_transaction`, and `eth_call` at the failed transaction's block height, with automatic fallback to `https://rpc.pharos.xyz`.
    - A missing receipt, an RPC error and a pending transaction are three different answers. An RPC-level error is surfaced as a failure; it is never reported as "transaction dropped".
    - JSON-RPC returns every quantity as hex (`"0x29095"`); simulation passes decimals. Both are
      normalised to decimal numbers before leaving the module, so consumers see one shape.
    - Requests time out after 10s. The public endpoint enforces a compute-unit rate limit (`cu limit exceeded; Request too fast per second`), so callers should not batch aggressively.
 4. **Actionable Remediation Engine:**
    - Outputs clear, non-technical instructions for end-users as well as technical fixes for Solidity developers.
-5. **Cyberpunk Web UI & Cloudflare Serverless Function:**
+5. **Web UI & Cloudflare Pages Function:**
    - Interactive diagnostic dashboard with instant failure presets, live execution provenance, copyable JSON & Markdown reports, and `/api/diagnose` endpoint.
    - When the API fails, the UI shows the error and hides the result. It used to fall back to an
      invented diagnosis — `REVERTED`, "ERC20: transfer amount exceeds balance", 45,200 gas, plus an
@@ -131,6 +131,7 @@ Everything below was produced by running the code, not by inspection.
 ## 🏆 Pharos Agent Arena Submission Proof
 
 - **Task Name:** `dapp-support-agent` (Support / Reporting)
-- **Status:** Working, tested against mainnet data; not yet deployed
-- **Live Demo:** not deployed. The previous README named `https://pharos-dapp-support-agent.pages.dev`, which does not resolve; run `npm run deploy` to create it, then put the real URL here.
-- **Repository:** `/home/ubuntu/dapp-support-agent`
+- **Status:** Deployed and live on Cloudflare Pages, verified against Pharos Pacific Mainnet (Chain 1672)
+- **Live Demo:** [https://pharos-dapp-support-agent.pages.dev/](https://pharos-dapp-support-agent.pages.dev/)
+- **Live API Endpoint:** [`/api/diagnose?txHash=0x1746ea121dfb6b387d3fb904c58444d4c5b26e4f7debd850f97cfb0c970bab08`](https://pharos-dapp-support-agent.pages.dev/api/diagnose?txHash=0x1746ea121dfb6b387d3fb904c58444d4c5b26e4f7debd850f97cfb0c970bab08)
+- **Repository:** [https://github.com/arraya20/pharos-dapp-support-agent](https://github.com/arraya20/pharos-dapp-support-agent)
