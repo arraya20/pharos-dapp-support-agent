@@ -7,26 +7,25 @@
   <link rel="stylesheet" href="style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 </head>
 <body>
   <div class="app-container">
-    <header class="app-header">
-      <div class="logo-group">
-        <div class="agent-badge">DIAGNOSTIC & REVERT EXPLAINER</div>
-        <h1>Pharos / dApp Support Agent</h1>
-      </div>
-      <div class="network-badge">
+    <header class="top">
+      <span>PHAROS / DAPP SUPPORT AGENT</span>
+      <span class="network-badge">
         <span class="pulse-dot"></span>
-        <span>PHAROS MAINNET · CHAIN 1672</span>
-      </div>
+        <span>READ-ONLY · CHAIN 1672</span>
+      </span>
     </header>
 
-    <div class="lead-card">
-      <p class="lead-text">
-        Automated customer and developer support agent that analyzes failed EVM transactions (status 0) on Pharos. Decodes standard <strong>Error(string)</strong>, compiler <strong>Panic(uint256)</strong>, <strong>OpenZeppelin Custom Errors</strong>, and out-of-gas events with step-by-step remediation advice.
+    <section class="hero">
+      <p class="eyebrow">Diagnostic &amp; revert explainer</p>
+      <h1>Know why it failed. Fix it fast.</h1>
+      <p class="intro">
+        Support agent that analyzes failed EVM transactions (status 0) on Pharos. Decodes standard <strong>Error(string)</strong>, compiler <strong>Panic(uint256)</strong>, <strong>OpenZeppelin Custom Errors</strong>, and out-of-gas events with step-by-step remediation advice.
       </p>
-    </div>
+    </section>
 
     <main class="main-grid">
       <!-- Left Column: Diagnostic Controller & Failure Presets -->
@@ -98,10 +97,10 @@
 
           <div class="action-row">
             <button type="button" id="btnQuickDecode" class="btn btn-secondary">
-              <span class="btn-icon">⚡</span> Quick Selector
+              Quick Selector
             </button>
             <button type="submit" id="btnDiagnose" class="btn btn-primary">
-              <span class="btn-icon">🔍</span> Run Tx Diagnosis
+              Run Tx Diagnosis
             </button>
           </div>
         </form>
@@ -123,7 +122,7 @@
 
         <div id="resultContainer" class="result-container">
           <div class="empty-state" id="emptyState">
-            <div class="empty-icon">🛠️</div>
+
             <p>Select a failure scenario or enter transaction details to generate an automated root cause diagnosis and developer remediation guide.</p>
           </div>
 
@@ -210,8 +209,8 @@
             </div>
 
             <div class="copy-row">
-              <button type="button" class="copy-btn" id="btnCopyJson">📋 Copy Raw JSON</button>
-              <button type="button" class="copy-btn" id="btnCopyMd">📝 Copy Markdown Report</button>
+              <button type="button" class="copy-btn" id="btnCopyJson">Copy Raw JSON</button>
+              <button type="button" class="copy-btn" id="btnCopyMd">Copy Markdown Report</button>
             </div>
           </div>
         </div>

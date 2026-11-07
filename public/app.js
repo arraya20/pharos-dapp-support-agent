@@ -285,8 +285,8 @@ function escapeHtml(str) {
 btnCopyJson.addEventListener("click", () => {
   if (!lastAnalysisResult) return;
   navigator.clipboard.writeText(JSON.stringify(lastAnalysisResult, null, 2));
-  btnCopyJson.textContent = "✅ Copied JSON!";
-  setTimeout(() => { btnCopyJson.textContent = "📋 Copy Raw JSON"; }, 2000);
+  btnCopyJson.textContent = "Copied JSON";
+  setTimeout(() => { btnCopyJson.textContent = "Copy Raw JSON"; }, 2000);
 });
 
 btnCopyMd.addEventListener("click", () => {
@@ -303,8 +303,8 @@ ${(res.steps || []).map(s => `  - ${s}`).join("\n")}
 - **Block:** ${res.blockNumber}`;
 
   navigator.clipboard.writeText(md);
-  btnCopyMd.textContent = "✅ Copied MD!";
-  setTimeout(() => { btnCopyMd.textContent = "📝 Copy Markdown Report"; }, 2000);
+  btnCopyMd.textContent = "Copied Markdown";
+  setTimeout(() => { btnCopyMd.textContent = "Copy Markdown Report"; }, 2000);
 });
 
 // Run initial diagnosis on page load
